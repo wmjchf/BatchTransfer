@@ -1,0 +1,34 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  background-image: url("/image/hero-bg.webp") !important;
+}
+
+html::-webkit-scrollbar {
+  display: none;
+}
+.infinite-scroll-component {
+  overflow: hidden !important;
+}
+
+@layer utilities {
+  .custom-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* 全局样式覆盖 */
+/* .react-joyride__tooltip {
+  max-width: 90vw !important;
+  font-size: 14px;
+  padding: 12px;
+  box-sizing: border-box;
+  word-break: break-word;
+} */
+
+/* 箭头大小调整（可选） */
+/* .react-joyride__tooltip .react-joyride__tooltip-arrow {
+  transform: scale(0.8);
+} */
