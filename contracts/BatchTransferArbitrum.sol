@@ -55,7 +55,7 @@ contract BatchTransferArbitrum is Ownable, ReentrancyGuard {
     event UnexpectedETHWithdrawn(uint256 amount);
     event UnexpectedTokenWithdrawn(address indexed token, uint256 amount);
 
-    constructor(address _feeCollector) {
+    constructor(address _feeCollector) Ownable(msg.sender) {
         require(_feeCollector != address(0), "Invalid fee collector address");
         feeCollector = _feeCollector;
     }

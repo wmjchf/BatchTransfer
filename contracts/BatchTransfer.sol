@@ -44,7 +44,7 @@ contract BatchTransfer is Ownable, ReentrancyGuard {
     event FeeCollectorUpdated(address indexed oldCollector, address indexed newCollector);
     event WhitelistUpdated(address indexed token, bool supported);
 
-    constructor(address _feeCollector) {
+    constructor(address _feeCollector) Ownable(msg.sender) {
         feeCollector = _feeCollector;
         
         // 初始化当前链的手续费配置
