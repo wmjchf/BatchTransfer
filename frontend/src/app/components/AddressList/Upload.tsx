@@ -1,8 +1,44 @@
 "use client";
-import { Button, Card, CardBody, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Table, TableHeader, TableColumn, TableBody, TableRow, TableCell } from "@heroui/react";
+import { 
+  Button, 
+  Card, 
+  CardBody, 
+  Table,
+  TableHeader,
+  TableColumn,
+  TableBody,
+  TableRow,
+  TableCell,
+  Tooltip,
+  Chip
+} from "@heroui/react";
 import { useState, useRef, useCallback } from "react";
 import Image from "next/image";
 import { PreviewData, IPreviewDataRef } from "./PreviewData";
+import localFont from "next/font/local";
+import classNames from "classnames";
+
+const myFont = localFont({
+  src: [
+    {
+      path: "../../fonts/Poppins700.ttf",
+      weight: "700",
+      style: "normal",
+    },
+    {
+      path: "../../fonts/Poppins500.ttf",
+      weight: "500",
+      style: "normal",
+    },
+  ],
+  display: "swap",
+});
+
+interface TransferRecord {
+  id: string;
+  address: string;
+  amount: number;
+}
 
 interface UploadProps {
   onFileUpload?: (data: any[]) => void;
@@ -11,10 +47,8 @@ interface UploadProps {
 export const Upload = ({ onFileUpload }: UploadProps) => {
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [transferRecords, setTransferRecords] = useState<TransferRecord[]>([]);
   const [error, setError] = useState<string>("");
-  const [previewData, setPreviewData] = useState<any[]>([]);
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const previewDataRef = useRef<IPreviewDataRef>(null);
   // 支持的文件类型
@@ -80,8 +114,17 @@ export const Upload = ({ onFileUpload }: UploadProps) => {
 
     try {
       const data = await parseFile(file);
-      setUploadedFile(file);
-      previewDataRef.current?.open(data.filter(item => item.address && item.amount));
+      const validData = data.filter(item => item.address && item.amount);
+      
+      // 将数据转换为转账记录格式，每次上传替换所有数据
+      const newRecords: TransferRecord[] = validData.map((item, index) => ({
+        id: `${Date.now()}-${index}`,
+        address: item.address,
+        amount: item.amount
+      }));
+      
+      setTransferRecords(newRecords); // Replace all data
+      setError("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "File processing failed");
     } finally {
@@ -123,18 +166,30 @@ export const Upload = ({ onFileUpload }: UploadProps) => {
     fileInputRef.current?.click();
   };
 
-  // 重置状态
-  const resetState = () => {
-    setUploadedFile(null);
-    setError("");
-    setPreviewData([]);
-    setIsModalOpen(false);
+  // 删除转账记录
+  const handleRemoveRecord = (id: string) => {
+    setTransferRecords(transferRecords.filter(record => record.id !== id));
+  };
+
+  // 清空所有记录
+  const handleClearAll = () => {
+    setTransferRecords([]);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
   };
 
-  // Download CSV template
+  // 预览所有数据
+  const handlePreviewAll = () => {
+    const previewData = transferRecords.map(record => ({
+      address: record.address,
+      amount: record.amount
+    }));
+    
+    previewDataRef.current?.open(previewData);
+  };
+
+  // 下载CSV模板
   const downloadCSVTemplate = () => {
     const csvContent = `Address,Amount
 0x1234567890123456789012345678901234567890,100
@@ -153,46 +208,98 @@ export const Upload = ({ onFileUpload }: UploadProps) => {
     URL.revokeObjectURL(url);
   };
 
+  // 计算总金额
+  const totalAmount = transferRecords.reduce((sum, record) => sum + record.amount, 0);
 
 
   return (
     <div className="h-full flex flex-col gap-4">
       {/* 上传区域 */}
-      <Card 
-        className={`flex-1 cursor-pointer transition-all duration-200 ${
-          isDragging 
-            ? "border-2 border-dashed border-blue-400 bg-blue-50" 
-            : "border-2 border-dashed border-gray-300 hover:border-gray-400"
-        }`}
-        isPressable
-        onPress={handleUploadClick}
-      >
-        <CardBody
-          className="flex flex-col items-center justify-center gap-4 p-8"
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-        >
-          {isUploading ? (
-            <>
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
-              <p className="text-gray-600">Processing file...</p>
-            </>
-          ) : (
-            <>
-              <Image 
-                src="/image/book.svg" 
-                alt="Upload" 
-                width={80} 
-                height={80}
-                className="opacity-60"
-              />
-            </>
-          )}
+      <Card>
+        <CardBody className="p-4">
+          <div className="flex flex-col gap-4">
+            {/* 拖拽上传区域 */}
+            <div className="flex gap-3">
+              <div
+                className={`flex-1 border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-all duration-200 ${
+                  isDragging 
+                    ? "border-blue-400 bg-blue-50" 
+                    : "border-gray-300 hover:border-gray-400"
+                }`}
+                onClick={handleUploadClick}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+              >
+                {isUploading ? (
+                  <div className="flex items-center justify-center gap-2">
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-500"></div>
+                    <p className={classNames(myFont.className, "text-gray-600 text-sm")}>Processing file...</p>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center gap-3">
+                    <Image 
+                      src="/image/book.svg" 
+                      alt="Upload" 
+                      width={24} 
+                      height={24}
+                      className="opacity-60"
+                    />
+                    <div className="text-left">
+                      <p className={classNames(myFont.className, "text-gray-700 font-medium text-sm")}>
+                        Click to upload or drag CSV file
+                      </p>
+                      <p className={classNames(myFont.className, "text-gray-500 text-xs")}>
+                        Supports CSV format, max 10MB
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Template Download */}
+            <div className="flex items-center gap-2">
+              <span className={classNames(myFont.className, "text-sm text-gray-500")}>
+                Download Template:
+              </span>
+              <Button
+                variant="light"
+                size="sm"
+                onPress={downloadCSVTemplate}
+                className={classNames(myFont.className, "text-primary")}
+              >
+                📄 batch_transfer_template.csv
+              </Button>
+            </div>
+
+            {/* Action Buttons */}
+            {/* {transferRecords.length > 0 && (
+              <div className="flex gap-2">
+                <Button
+                  variant="bordered"
+                  color="danger"
+                  size="sm"
+                  onPress={handleClearAll}
+                  className={classNames(myFont.className)}
+                >
+                  Clear All
+                </Button>
+                <Button
+                  color="success"
+                  size="sm"
+                  onPress={handlePreviewAll}
+                  className={classNames(myFont.className)}
+                >
+                  Preview ({transferRecords.length})
+                </Button>
+              </div>
+            )} */}
+          </div>
         </CardBody>
       </Card>
 
-      {/* 错误信息 */}
+      {/* Error Message */}
       {error && (
         <Card className="border-red-200 bg-red-50">
           <CardBody className="py-3">
@@ -201,29 +308,90 @@ export const Upload = ({ onFileUpload }: UploadProps) => {
         </Card>
       )}
 
-      {/* 模板下载区域 */}
-      <Card className="bg-green-50 border-green-200">
-        <CardBody className="py-3">
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="font-medium text-green-800">Download Template Files:</h4>
-          </div>
-          <div className="flex gap-3">
-            <Button
-              color="success"
-              variant="bordered"
-              size="sm"
-              onPress={downloadCSVTemplate}
-              className="w-full"
-            >
-              📄 Download CSV Template
-            </Button>
-          </div>
-        </CardBody>
-      </Card>
+            {/* Transfer Records List */}
+      {transferRecords.length > 0 && (
+        <Card className="flex-1">
+          <CardBody className="p-0">
+            <div className="p-4 border-b">
+              <div className="flex justify-between items-center">
+                <h3 className={classNames(myFont.className, "font-semibold")}>
+                  Transfer List ({transferRecords.length} items)
+                </h3>
+                <div className="flex items-center gap-2">
+                  <Chip color="primary" variant="flat" className={classNames(myFont.className,'relative top-[1px]')}>
+                    Total: {totalAmount.toFixed(6)}
+                  </Chip>
+                  <Button color="success" size="sm" radius="full" className="w-full"  onPress={handlePreviewAll}>
+                    <span className={classNames(myFont.className)}>Batch Transfer</span>
+                  </Button>
+                </div>
+              </div>
+            </div>
+            
+            <div className="h-[calc(100vh-424px)] overflow-y-auto">
+              <Table 
+                aria-label="Transfer records list"
+                removeWrapper
+                classNames={{
+                  th: "bg-gray-50",
+                }}
+              >
+                <TableHeader>
+                  <TableColumn className={classNames(myFont.className)}>Address</TableColumn>
+                  <TableColumn className={classNames(myFont.className)}>Amount</TableColumn>
+                  <TableColumn className={classNames(myFont.className)}>Action</TableColumn>
+                </TableHeader>
+                <TableBody>
+                  {transferRecords.map((record) => (
+                    <TableRow key={record.id}>
+                      <TableCell>
+                        <Tooltip content={record.address}>
+                          <span className="font-mono text-sm">
+                            {`${record.address.slice(0, 6)}...${record.address.slice(-4)}`}
+                          </span>
+                        </Tooltip>
+                      </TableCell>
+                      <TableCell className="font-mono text-sm">
+                        {record.amount}
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          isIconOnly
+                          size="sm"
+                          color="danger"
+                          variant="light"
+                          onPress={() => handleRemoveRecord(record.id)}
+                        >
+                          ✕
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardBody>
+        </Card>
+      )}
 
+      {/* Empty State */}
+      {transferRecords.length === 0 && (
+        <Card className="flex-1">
+          <CardBody className="flex flex-col items-center justify-center gap-4 p-8">
+            <div className="text-6xl opacity-20">📁</div>
+            <div className="text-center">
+              <h3 className={classNames(myFont.className, "font-semibold text-gray-600 mb-2")}>
+                No Transfer Records
+              </h3>
+              <p className={classNames(myFont.className, "text-sm text-gray-500")}>
+                Please upload a CSV file to batch import transfer addresses
+              </p>
+            </div>
+          </CardBody>
+        </Card>
+      )}
 
-
-      {/* 隐藏的文件输入 */}
+      {/* Hidden File Input */}
       <input
         ref={fileInputRef}
         type="file"
@@ -232,7 +400,7 @@ export const Upload = ({ onFileUpload }: UploadProps) => {
         className="hidden"
       />
 
-      {/* 数据预览模态框 */}
+      {/* Data Preview Modal */}
       <PreviewData ref={previewDataRef} />
     </div>
   );
