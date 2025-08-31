@@ -33,6 +33,10 @@ contract BatchTransfer is Ownable, ReentrancyGuard {
     // 手续费收集地址
     address public feeCollector;
     
+    // 分享分用配置
+    uint256 public referralRate = 10; // 分用比例 10% (可由owner修改)
+    mapping(address => address) public userReferrers; // 用户 => 分享者映射
+    
     // 支持的代币白名单 (可选)
     mapping(address => bool) public supportedTokens;
     bool public whitelistEnabled = false;
@@ -43,6 +47,9 @@ contract BatchTransfer is Ownable, ReentrancyGuard {
     event FeeConfigUpdated(uint256 indexed chainId, FeeConfig config);
     event FeeCollectorUpdated(address indexed oldCollector, address indexed newCollector);
     event WhitelistUpdated(address indexed token, bool supported);
+    event ReferralReward(address indexed referrer, address indexed user, uint256 amount);
+    event ReferralRateUpdated(uint256 oldRate, uint256 newRate);
+    event ReferrerSet(address indexed user, address indexed referrer);
 
     constructor(address _feeCollector) Ownable(msg.sender) {
         feeCollector = _feeCollector;
@@ -118,8 +125,9 @@ contract BatchTransfer is Ownable, ReentrancyGuard {
     /**
      * @dev 批量转账原生代币
      * @param transfers 转账信息数组
+     * @param referrer 分享者地址 (可选，传入address(0)表示无分享者)
      */
-    function batchTransferNative(Transfer[] calldata transfers) 
+    function batchTransferNative(Transfer[] calldata transfers, address referrer) 
         external 
         payable 
         nonReentrant 
@@ -146,11 +154,8 @@ contract BatchTransfer is Ownable, ReentrancyGuard {
             require(success, string(abi.encodePacked("Transfer failed for address: ", _addressToString(transfers[i].to))));
         }
         
-        // 转移手续费给收集地址
-        if (fee > 0) {
-            (bool feeSuccess, ) = feeCollector.call{value: fee}("");
-            require(feeSuccess, "Fee transfer failed");
-        }
+        // 分配手续费（包括分享分用）
+        _distributeFee(msg.sender, referrer, fee);
         
         // 退还多余的ETH
         uint256 remaining = msg.value - totalAmount - fee;
@@ -166,8 +171,9 @@ contract BatchTransfer is Ownable, ReentrancyGuard {
      * @dev 批量转账ERC20代币
      * @param token 代币合约地址
      * @param transfers 转账信息数组
+     * @param referrer 分享者地址 (可选，传入address(0)表示无分享者)
      */
-    function batchTransferToken(address token, Transfer[] calldata transfers) 
+    function batchTransferToken(address token, Transfer[] calldata transfers, address referrer) 
         external 
         payable 
         nonReentrant 
@@ -203,11 +209,8 @@ contract BatchTransfer is Ownable, ReentrancyGuard {
             tokenContract.safeTransferFrom(msg.sender, transfers[i].to, transfers[i].amount);
         }
         
-        // 转移手续费给收集地址
-        if (fee > 0) {
-            (bool feeSuccess, ) = feeCollector.call{value: fee}("");
-            require(feeSuccess, "Fee transfer failed");
-        }
+        // 分配手续费（包括分享分用）
+        _distributeFee(msg.sender, referrer, fee);
         
         // 退还多余的ETH
         uint256 remaining = msg.value - fee;
@@ -242,6 +245,35 @@ contract BatchTransfer is Ownable, ReentrancyGuard {
         address oldCollector = feeCollector;
         feeCollector = _feeCollector;
         emit FeeCollectorUpdated(oldCollector, _feeCollector);
+    }
+
+    /**
+     * @dev 设置分享分用比例 (仅所有者)
+     * @param _referralRate 新的分用比例 (0-100)
+     */
+    function setReferralRate(uint256 _referralRate) external onlyOwner {
+        require(_referralRate <= 100, "Referral rate cannot exceed 100%");
+        uint256 oldRate = referralRate;
+        referralRate = _referralRate;
+        emit ReferralRateUpdated(oldRate, _referralRate);
+    }
+
+    /**
+     * @dev 获取当前分享分用比例
+     */
+    function getReferralRate() external view returns (uint256) {
+        return referralRate;
+    }
+
+
+
+    /**
+     * @dev 获取用户的分享者
+     * @param user 用户地址
+     * @return 分享者地址
+     */
+    function getUserReferrer(address user) external view returns (address) {
+        return userReferrers[user];
     }
 
     /**
@@ -309,6 +341,48 @@ contract BatchTransfer is Ownable, ReentrancyGuard {
      */
     function getCurrentChainFeeConfig() external view returns (FeeConfig memory) {
         return chainFees[block.chainid];
+    }
+
+    /**
+     * @dev 处理手续费分配（包括分享分用）
+     * @param user 用户地址
+     * @param referrer 分享者地址
+     * @param totalFee 总手续费
+     */
+    function _distributeFee(address user, address paramReferrer, uint256 totalFee) private {
+        address actualReferrer = userReferrers[user];
+        
+        // 如果用户还没有设置过分享者，且参数中有有效的分享者，则设置为第一次的分享者
+        if (actualReferrer == address(0) && paramReferrer != address(0) && paramReferrer != user) {
+            userReferrers[user] = paramReferrer;
+            actualReferrer = paramReferrer;
+            emit ReferrerSet(user, paramReferrer);
+        }
+        
+        if (actualReferrer != address(0) && actualReferrer != user) {
+            // 计算分享分用金额
+            uint256 referralReward = (totalFee * referralRate) / 100;
+            uint256 remainingFee = totalFee - referralReward;
+            
+            // 发送分享分用给分享人
+            if (referralReward > 0) {
+                (bool referralSuccess, ) = actualReferrer.call{value: referralReward}("");
+                require(referralSuccess, "Referral reward transfer failed");
+                emit ReferralReward(actualReferrer, user, referralReward);
+            }
+            
+            // 发送剩余手续费给收集地址
+            if (remainingFee > 0) {
+                (bool feeSuccess, ) = feeCollector.call{value: remainingFee}("");
+                require(feeSuccess, "Fee transfer failed");
+            }
+        } else {
+            // 没有分享人或分享人是自己，全部手续费给收集地址
+            if (totalFee > 0) {
+                (bool feeSuccess, ) = feeCollector.call{value: totalFee}("");
+                require(feeSuccess, "Fee transfer failed");
+            }
+        }
     }
 
     /**

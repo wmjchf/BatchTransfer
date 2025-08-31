@@ -27,7 +27,6 @@ export const TokenSetup = () => {
   const [tokenType, setTokenType] = useState<TokenType>("native");
   const [tokenAddress, setTokenAddress] = useState("");
 const {chain} = useAccount();
-console.log(chain?.nativeCurrency,'rewrwe');
   return (
     <div className="w-full flex flex-col gap-6 border-[1px] border-solid border-gray-200 rounded-md p-4">
       <div className="flex flex-col gap-3">

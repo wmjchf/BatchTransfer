@@ -37,8 +37,10 @@ contract BatchTransferArbitrum is Ownable, ReentrancyGuard {
     // 手续费收集地址
     address public feeCollector;
     
-
-
+    // 分享分用配置
+    uint256 public referralRate = 10; // 分用比例 10% (可由owner修改)
+    mapping(address => address) public userReferrers; // 用户 => 分享者映射
+    
     // 常用代币地址 (Arbitrum One)
     address public constant USDT = 0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9;  // Tether USD
     address public constant USDC = 0xaf88d065e77c8cC2239327C5EDb3A432268e5831;  // USD Coin
@@ -51,6 +53,9 @@ contract BatchTransferArbitrum is Ownable, ReentrancyGuard {
     event BatchTokenTransfer(address indexed sender, address indexed token, uint256 successCount, uint256 failureCount);
     event FeeConfigUpdated(uint256 baseFee, uint256 perAddressFee, uint256 minFee, uint256 maxFee);
     event FeeCollectorUpdated(address indexed oldCollector, address indexed newCollector);
+    event ReferralReward(address indexed referrer, address indexed user, uint256 amount);
+    event ReferralRateUpdated(uint256 oldRate, uint256 newRate);
+    event ReferrerSet(address indexed user, address indexed referrer);
 
     event UnexpectedETHWithdrawn(uint256 amount);
     event UnexpectedTokenWithdrawn(address indexed token, uint256 amount);
@@ -79,8 +84,9 @@ contract BatchTransferArbitrum is Ownable, ReentrancyGuard {
     /**
      * @dev 批量转账ETH (在Arbitrum上)
      * @param transfers 转账信息数组
+     * @param referrer 分享者地址 (可选，传入address(0)表示无分享者)
      */
-    function batchTransferETH(Transfer[] calldata transfers) 
+    function batchTransferETH(Transfer[] calldata transfers, address referrer) 
         external 
         payable 
         nonReentrant 
@@ -210,7 +216,34 @@ contract BatchTransferArbitrum is Ownable, ReentrancyGuard {
         emit FeeCollectorUpdated(oldCollector, _feeCollector);
     }
 
+    /**
+     * @dev 设置分享分用比例 (仅所有者)
+     * @param _referralRate 新的分用比例 (0-100)
+     */
+    function setReferralRate(uint256 _referralRate) external onlyOwner {
+        require(_referralRate <= 100, "Referral rate cannot exceed 100%");
+        uint256 oldRate = referralRate;
+        referralRate = _referralRate;
+        emit ReferralRateUpdated(oldRate, _referralRate);
+    }
 
+    /**
+     * @dev 获取当前分享分用比例
+     */
+    function getReferralRate() external view returns (uint256) {
+        return referralRate;
+    }
+
+
+
+    /**
+     * @dev 获取用户的分享者
+     * @param user 用户地址
+     * @return 分享者地址
+     */
+    function getUserReferrer(address user) external view returns (address) {
+        return userReferrers[user];
+    }
 
     /**
      * @dev 获取当前手续费配置
@@ -268,6 +301,48 @@ contract BatchTransferArbitrum is Ownable, ReentrancyGuard {
             str[3+i*2] = alphabet[uint8(value[i + 12] & 0x0f)];
         }
         return string(str);
+    }
+
+    /**
+     * @dev 处理手续费分配（包括分享分用）
+     * @param user 用户地址
+     * @param referrer 分享者地址
+     * @param totalFee 总手续费
+     */
+    function _distributeFee(address user, address paramReferrer, uint256 totalFee) private {
+        address actualReferrer = userReferrers[user];
+        
+        // 如果用户还没有设置过分享者，且参数中有有效的分享者，则设置为第一次的分享者
+        if (actualReferrer == address(0) && paramReferrer != address(0) && paramReferrer != user) {
+            userReferrers[user] = paramReferrer;
+            actualReferrer = paramReferrer;
+            emit ReferrerSet(user, paramReferrer);
+        }
+        
+        if (actualReferrer != address(0) && actualReferrer != user) {
+            // 计算分享分用金额
+            uint256 referralReward = (totalFee * referralRate) / 100;
+            uint256 remainingFee = totalFee - referralReward;
+            
+            // 发送分享分用给分享人
+            if (referralReward > 0) {
+                (bool referralSuccess, ) = actualReferrer.call{value: referralReward}("");
+                require(referralSuccess, "Referral reward transfer failed");
+                emit ReferralReward(actualReferrer, user, referralReward);
+            }
+            
+            // 发送剩余手续费给收集地址
+            if (remainingFee > 0) {
+                (bool feeSuccess, ) = feeCollector.call{value: remainingFee}("");
+                require(feeSuccess, "Fee transfer failed");
+            }
+        } else {
+            // 没有分享人或分享人是自己，全部手续费给收集地址
+            if (totalFee > 0) {
+                (bool feeSuccess, ) = feeCollector.call{value: totalFee}("");
+                require(feeSuccess, "Fee transfer failed");
+            }
+        }
     }
 
     /**

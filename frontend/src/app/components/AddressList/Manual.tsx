@@ -17,6 +17,8 @@ import { useState, useRef } from "react";
 import classNames from "classnames";
 import localFont from "next/font/local";
 import { PreviewData, IPreviewDataRef } from "./PreviewData";
+import { useSearchParams } from "next/navigation";
+import { useBatchTransferETH, useCalculateFee } from "../../../abi/batchTransfter";
 
 const myFont = localFont({
   src: [
@@ -37,7 +39,7 @@ const myFont = localFont({
 interface TransferItem {
   id: string;
   address: string;
-  amount: string;
+  amount: number;
   isValid?: boolean;
   error?: string;
 }
@@ -48,6 +50,10 @@ export const Manual = () => {
   const [newAmount, setNewAmount] = useState("");
   const [errors, setErrors] = useState<{address?: string; amount?: string}>({});
   const previewDataRef = useRef<IPreviewDataRef>(null);
+  const p = useSearchParams();
+  const refAddress = p.get("address");
+  const { fee } = useCalculateFee(transferList.length);
+  const { handleBatchTransferETH,isPending,isError } = useBatchTransferETH();
 
   // Validate Ethereum address
   const validateAddress = (address: string): boolean => {
@@ -56,8 +62,8 @@ export const Manual = () => {
   };
 
   // Validate amount
-  const validateAmount = (amount: string): boolean => {
-    const num = parseFloat(amount);
+  const validateAmount = (amount: number): boolean => {
+    const num = amount;
     return !isNaN(num) && num > 0;
   };
 
@@ -75,7 +81,7 @@ export const Manual = () => {
     // Validate amount
     if (!newAmount.trim()) {
       newErrors.amount = "Amount cannot be empty";
-    } else if (!validateAmount(newAmount.trim())) {
+    } else if (!validateAmount(Number(newAmount.trim()))) {
       newErrors.amount = "Please enter a valid amount";
     }
     
@@ -100,7 +106,7 @@ export const Manual = () => {
     const newItem: TransferItem = {
       id: Date.now().toString(),
       address: newAddress.trim(),
-      amount: newAmount.trim(),
+      amount: Number(newAmount.trim()),
       isValid: true
     };
     
@@ -121,20 +127,17 @@ export const Manual = () => {
   };
 
   // Preview data
-  const handlePreview = () => {
-    const validItems = transferList.filter(item => item.isValid);
-    const previewData = validItems.map(item => ({
-      address: item.address,
-      amount: parseFloat(item.amount)
-    }));
-    
-    previewDataRef.current?.open(previewData);
+  const hanldeTransfer = () => {
+    if(!fee){
+      return;
+    }
+    handleBatchTransferETH(transferList.map(item => ({ to: item.address, amount: BigInt(item.amount * 10 ** 18 ) })),BigInt(totalAmount * 10 ** 18 ),fee,refAddress as string)
   };
 
   // Calculate total amount
   const totalAmount = transferList.reduce((sum, item) => {
     if (item.isValid && validateAmount(item.amount)) {
-      return sum + parseFloat(item.amount);
+      return sum + item.amount;
     }
     return sum;
   }, 0);
@@ -220,7 +223,7 @@ export const Manual = () => {
                 <Chip color="primary" variant="flat" className={classNames(myFont.className)}>
                   Total: {totalAmount.toFixed(6)}
                 </Chip>
-                <Button color="success" size="sm" radius="full" className="w-full"  onPress={handlePreview}>
+                <Button color="success" isLoading={isPending} size="sm" radius="full" className="w-full"  onPress={hanldeTransfer}>
                     <span className={classNames(myFont.className)}>Batch Transfer</span>
                   </Button>
                 </div>

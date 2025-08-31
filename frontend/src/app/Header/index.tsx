@@ -1,5 +1,6 @@
 "use client";
 import {
+  addToast,
   Avatar,
   Button,
   Dropdown,
@@ -92,11 +93,29 @@ export const Header: React.FC<IHeader> = () => {
                       </p>
                     </DropdownItem>
                     <DropdownItem
+                      key="invite"
+                      color="success"
+                      onPress={() => {
+// 复制链接到剪贴板
+                        navigator.clipboard.writeText(`${window.location.href}?address=${address}`);
+                        addToast({
+                          title: "Link copied to clipboard",
+                          color:"success"
+                        })
+                      }}
+                    >
+                      <div className={classNames("flex items-center gap-2",myFont.className)}><Image src="/image/share.svg" alt="share" width={20} height={20}></Image>
+                      Invite Link</div>
+                    </DropdownItem>
+                    <DropdownItem
                       key="logout"
                       color="success"
                       onPress={() => disconnect()}
                     >
+                      <div className={classNames("flex items-center gap-2",myFont.className)}>
+                      <Image src="/image/disconnect.svg" alt="share" width={20} height={20}></Image>
                       Disconnect Wallet
+                      </div>
                     </DropdownItem>
                   </DropdownMenu>
                 </Dropdown>

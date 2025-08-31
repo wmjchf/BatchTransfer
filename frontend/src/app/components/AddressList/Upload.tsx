@@ -17,6 +17,7 @@ import Image from "next/image";
 import { PreviewData, IPreviewDataRef } from "./PreviewData";
 import localFont from "next/font/local";
 import classNames from "classnames";
+import { useSearchParams } from "next/navigation";
 
 const myFont = localFont({
   src: [
@@ -51,6 +52,8 @@ export const Upload = ({ onFileUpload }: UploadProps) => {
   const [error, setError] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const previewDataRef = useRef<IPreviewDataRef>(null);
+  const p = useSearchParams();
+  const refAddress = p.get("address");
   // 支持的文件类型
   const acceptedFileTypes = [
     "text/csv" // .csv
@@ -180,13 +183,8 @@ export const Upload = ({ onFileUpload }: UploadProps) => {
   };
 
   // 预览所有数据
-  const handlePreviewAll = () => {
-    const previewData = transferRecords.map(record => ({
-      address: record.address,
-      amount: record.amount
-    }));
-    
-    previewDataRef.current?.open(previewData);
+  const hanldeTransfer = () => {
+    console.log(refAddress,'rewrewr')
   };
 
   // 下载CSV模板
@@ -321,7 +319,7 @@ export const Upload = ({ onFileUpload }: UploadProps) => {
                   <Chip color="primary" variant="flat" className={classNames(myFont.className,'relative top-[1px]')}>
                     Total: {totalAmount.toFixed(6)}
                   </Chip>
-                  <Button color="success" size="sm" radius="full" className="w-full"  onPress={handlePreviewAll}>
+                  <Button color="success" size="sm" radius="full" className="w-full"  onPress={hanldeTransfer}>
                     <span className={classNames(myFont.className)}>Batch Transfer</span>
                   </Button>
                 </div>
