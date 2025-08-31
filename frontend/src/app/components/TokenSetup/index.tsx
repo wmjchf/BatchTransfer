@@ -31,7 +31,10 @@ export const TokenSetup = () => {
           Enter the token contract address you want to send
         </span>
       </div>
-      <Input placeholder="Enter the token contract address"></Input>
+      <Input
+        placeholder="Enter the token contract address"
+        color="success"
+      ></Input>
     </div>
   );
 };

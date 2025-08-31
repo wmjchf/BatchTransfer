@@ -13,7 +13,7 @@ export const SwitchNetwork = () => {
     }
     return;
   };
-  console.log(chain, "rewrwer");
+
   return (
     <Select
       className="w-[150px]"
