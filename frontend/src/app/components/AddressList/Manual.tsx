@@ -53,7 +53,7 @@ export const Manual = () => {
   const p = useSearchParams();
   const refAddress = p.get("address");
   const { fee } = useCalculateFee(transferList.length);
-  const { handleBatchTransferETH,isPending,isError } = useBatchTransferETH();
+  const { handleBatchTransferETH,isPending } = useBatchTransferETH();
 
   // Validate Ethereum address
   const validateAddress = (address: string): boolean => {

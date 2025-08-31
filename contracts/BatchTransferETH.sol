@@ -44,6 +44,7 @@ contract BatchTransferETH is Ownable, ReentrancyGuard {
     // 事件
     event BatchETHTransfer(address indexed sender, uint256 successCount, uint256 failureCount, uint256 refundAmount);
     event BatchTokenTransfer(address indexed sender, address indexed token, uint256 successCount, uint256 failureCount);
+    event TransferDetail(address indexed sender, uint256 indexed batchIndex, address to, uint256 amount, bool success, string failureReason);
     event FeeConfigUpdated(uint256 baseFee, uint256 perAddressFee, uint256 minFee, uint256 maxFee);
     event FeeCollectorUpdated(address indexed oldCollector, address indexed newCollector);
     event ReferralReward(address indexed referrer, address indexed user, uint256 amount);
@@ -111,12 +112,16 @@ contract BatchTransferETH is Ownable, ReentrancyGuard {
         for (uint256 i = 0; i < transfers.length; i++) {
             (bool success, bytes memory returnData) = transfers[i].to.call{value: transfers[i].amount}("");
             
+            string memory failureReason = success ? "" : _getRevertReason(returnData);
             results[i] = TransferResult({
                 to: transfers[i].to,
                 amount: transfers[i].amount,
                 success: success,
-                failureReason: success ? "" : _getRevertReason(returnData)
+                failureReason: failureReason
             });
+            
+            // 触发详细转账结果事件
+            emit TransferDetail(msg.sender, i, transfers[i].to, transfers[i].amount, success, failureReason);
             
             if (success) {
                 successfulAmount += transfers[i].amount;
@@ -190,6 +195,10 @@ contract BatchTransferETH is Ownable, ReentrancyGuard {
                     success: true,
                     failureReason: ""
                 });
+                
+                // 触发详细转账结果事件
+                emit TransferDetail(msg.sender, i, transfers[i].to, transfers[i].amount, true, "");
+                
                 successfulAmount += transfers[i].amount;
                 successCount++;
             } catch Error(string memory reason) {
@@ -199,13 +208,20 @@ contract BatchTransferETH is Ownable, ReentrancyGuard {
                     success: false,
                     failureReason: reason
                 });
+                
+                // 触发详细转账结果事件
+                emit TransferDetail(msg.sender, i, transfers[i].to, transfers[i].amount, false, reason);
             } catch (bytes memory) {
+                string memory failureReason = "Token transfer failed";
                 results[i] = TransferResult({
                     to: transfers[i].to,
                     amount: transfers[i].amount,
                     success: false,
-                    failureReason: "Token transfer failed"
+                    failureReason: failureReason
                 });
+                
+                // 触发详细转账结果事件
+                emit TransferDetail(msg.sender, i, transfers[i].to, transfers[i].amount, false, failureReason);
             }
         }
         
