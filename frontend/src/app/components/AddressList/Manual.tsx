@@ -11,7 +11,8 @@ import {
   TableRow,
   TableCell,
   Tooltip,
-  Chip
+  Chip,
+  addToast
 } from "@heroui/react";
 import { useState, useRef } from "react";
 import classNames from "classnames";
@@ -19,6 +20,8 @@ import localFont from "next/font/local";
 import { PreviewData, IPreviewDataRef } from "./PreviewData";
 import { useSearchParams } from "next/navigation";
 import { useBatchTransferETH, useCalculateFee } from "../../../abi/batchTransfter";
+import { parseEventLogs } from "viem";
+import { BATCH_TRANSFER_ABI } from "../../../constant/batchTransfer";
 
 const myFont = localFont({
   src: [
@@ -36,12 +39,14 @@ const myFont = localFont({
   display: "swap",
 });
 
+type TransferStatus = "pending" | "success" | "failed";
+
 interface TransferItem {
   id: string;
   address: string;
   amount: number;
   isValid?: boolean;
-  error?: string;
+  status: TransferStatus;
 }
 
 export const Manual = () => {
@@ -107,7 +112,8 @@ export const Manual = () => {
       id: Date.now().toString(),
       address: newAddress.trim(),
       amount: Number(newAmount.trim()),
-      isValid: true
+      isValid: true,
+      status: "pending"
     };
     
     setTransferList([...transferList, newItem]);
@@ -126,12 +132,81 @@ export const Manual = () => {
     setTransferList([]);
   };
 
-  // Preview data
-  const hanldeTransfer = () => {
+  // Handle batch transfer
+  const hanldeTransfer = async () => {
     if(!fee){
       return;
     }
-    handleBatchTransferETH(transferList.map(item => ({ to: item.address, amount: BigInt(item.amount * 10 ** 18 ) })),BigInt(totalAmount * 10 ** 18 ),fee,refAddress as string)
+    
+    // Set all items to pending status
+    const pendingList = transferList.map(item => ({
+      ...item,
+      status: "pending" as TransferStatus
+    }));
+    setTransferList(pendingList);
+    
+    try {
+      const {receipt} = await handleBatchTransferETH(
+        transferList.map(item => ({ 
+          to: item.address, 
+          amount: BigInt(item.amount * 10 ** 18 ) 
+        })),
+        BigInt(totalAmount * 10 ** 18 ),
+        fee,
+        refAddress as string
+      );
+      
+      const logs = parseEventLogs({
+        abi: BATCH_TRANSFER_ABI,
+        logs: receipt.logs,
+      });
+      
+      const transferDetailLogs = logs.filter((log:any)=>log.eventName === 'TransferDetail').map((log:any)=>({
+        batchIndex: log.args.batchIndex,
+        to: log.args.to,
+        amount: log.args.amount,
+        success: log.args.success,
+        failureReason: log.args.failureReason
+      }));
+      
+      // Update status based on transaction results
+      const updatedTransferList = transferList.map((item,index)=>{
+        const transferDetailLog = transferDetailLogs.find((log:any)=>log.batchIndex === index);
+        return {
+          ...item,
+          status: (transferDetailLog?.success ? "success" : "failed") as TransferStatus
+        }
+      });
+      
+      setTransferList(updatedTransferList);
+      
+      const failedTransfers = updatedTransferList.filter(item => item.status === "failed");
+      const successfulTransfers = updatedTransferList.filter(item => item.status === "success");
+      
+      if(failedTransfers.length > 0){
+        addToast({
+          title: `${failedTransfers.length} transfers failed, ${successfulTransfers.length} transfers succeeded`,
+          color: "warning",
+        });
+      } else {
+        addToast({
+          title: `All ${successfulTransfers.length} transfers succeeded!`,
+          color: "success",
+        });
+      }
+    } catch (error) {
+      // Set all items to failed status on error
+      const failedList = transferList.map(item => ({
+        ...item,
+        status: "failed" as TransferStatus
+      }));
+      setTransferList(failedList);
+      
+      addToast({
+        title: "Batch transfer failed",
+        color: "danger",
+      });
+    }
   };
 
   // Calculate total amount
@@ -184,28 +259,6 @@ export const Manual = () => {
                 <span className={classNames(myFont.className)}> Add</span>
               </Button>
             </div>
-            
-            {/* {transferList.length > 0 && (
-              <div className="flex gap-2">
-                <Button
-                  variant="bordered"
-                  color="danger"
-                  size="sm"
-                  onPress={handleClearAll}
-                  className={classNames(myFont.className)}
-                >
-                  Clear All
-                </Button>
-                <Button
-                  color="success"
-                  size="sm"
-                  onPress={handlePreview}
-                  className={classNames(myFont.className)}
-                >
-                  Preview ({transferList.length})
-                </Button>
-              </div>
-            )} */}
           </div>
         </CardBody>
       </Card>
@@ -242,6 +295,7 @@ export const Manual = () => {
                 <TableHeader>
                   <TableColumn className={classNames(myFont.className)}>Address</TableColumn>
                   <TableColumn className={classNames(myFont.className)}>Amount</TableColumn>
+                  <TableColumn className={classNames(myFont.className)}>Status</TableColumn>
                   <TableColumn className={classNames(myFont.className)}>Action</TableColumn>
                 </TableHeader>
                 <TableBody>
@@ -256,6 +310,23 @@ export const Manual = () => {
                       </TableCell>
                       <TableCell className="font-mono text-sm">
                         {item.amount}
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          size="sm"
+                          color={
+                            item.status === "success" 
+                              ? "success" 
+                              : item.status === "failed" 
+                              ? "danger" 
+                              : "default"
+                          }
+                          variant="flat"
+                          className={classNames(myFont.className)}
+                        >
+                          {item.status === "pending" ? "Pending" : 
+                           item.status === "success" ? "Success" : "Failed"}
+                        </Chip>
                       </TableCell>
                       <TableCell>
                         <Button

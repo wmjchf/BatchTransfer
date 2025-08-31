@@ -1,16 +1,13 @@
 import {
     useWriteContract,
     useConfig,
-    useAccount,
     useReadContract,
   } from "wagmi";
   import { waitForTransactionReceipt } from "@wagmi/core";
   import { Address } from "viem";
   import { BATCH_TRANSFER_ABI } from "../constant/batchTransfer";
   import { useState } from "react";
-  import event from "../event";
   import { addToast } from "@heroui/react";
-  import { parseEventLogs } from 'viem';
 
   export interface Transfer {
     to: string;
@@ -58,14 +55,6 @@ import {
         const receipt = await waitForTransactionReceipt(config as any, {
           hash,
         });
-       
-        const logs = parseEventLogs({
-          abi: BATCH_TRANSFER_ABI,
-          logs: receipt.logs,
-        });
-
-console.log(logs,'rewrewrewrewrewrwe');
-        event.emit("mintSuccess");
         return { hash, receipt };
       } catch (error) {
         addToast({
