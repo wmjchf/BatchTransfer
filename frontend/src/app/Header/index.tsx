@@ -93,7 +93,7 @@ export const Header: React.FC<IHeader> = () => {
                     </DropdownItem>
                     <DropdownItem
                       key="logout"
-                      color="danger"
+                      color="success"
                       onPress={() => disconnect()}
                     >
                       Disconnect Wallet
@@ -106,7 +106,7 @@ export const Header: React.FC<IHeader> = () => {
                 {(openConnectModal) => {
                   return (
                     <Button
-                      color="danger"
+                      color="success"
                       className="flex-shrink-0 w-[200px]"
                       onPress={openConnectModal}
                     >

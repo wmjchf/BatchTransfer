@@ -67,7 +67,7 @@ export const PreviewData = forwardRef<IPreviewDataRef, IPreviewDataProps>(
             <h3 className={classNames(myFont.className)}>Transfer Preview</h3>
           </ModalHeader>
           <ModalBody>
-            <Table aria-label="Data preview table">
+            <Table aria-label="Data preview table" shadow="none">
               <TableHeader>
                 <TableColumn>
                   <span className={classNames(myFont.className)}>ADDRESS</span>
