@@ -2,8 +2,9 @@
 import { Input, RadioGroup, Radio } from "@heroui/react";
 import classNames from "classnames";
 import localFont from "next/font/local";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAccount } from "wagmi";
+import { useCommonStore } from "../../../store/common";
 
 const myFont = localFont({
   src: [
@@ -26,7 +27,11 @@ type TokenType = "native" | "erc20";
 export const TokenSetup = () => {
   const [tokenType, setTokenType] = useState<TokenType>("native");
   const [tokenAddress, setTokenAddress] = useState("");
+  const { setTokenInfo } = useCommonStore();
 const {chain} = useAccount();
+useEffect(() => {
+  setTokenInfo({ tokenType, tokenAddress });
+}, [tokenType, tokenAddress]);
   return (
     <div className="w-full flex flex-col gap-6 border-[1px] border-solid border-gray-200 rounded-md p-4">
       <div className="flex flex-col gap-3">

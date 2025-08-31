@@ -10,7 +10,8 @@ import {
   TableRow,
   TableCell,
   Tooltip,
-  Chip
+  Chip,
+  addToast
 } from "@heroui/react";
 import { useState, useRef, useCallback } from "react";
 import Image from "next/image";
@@ -18,6 +19,10 @@ import { PreviewData, IPreviewDataRef } from "./PreviewData";
 import localFont from "next/font/local";
 import classNames from "classnames";
 import { useSearchParams } from "next/navigation";
+import { useCommonStore } from "../../../store/common";
+import { useBatchTransferETH, useCalculateFee } from "../../../abi/batchTransfter";
+import { parseEventLogs } from "viem";
+import { BATCH_TRANSFER_ABI } from "../../../constant/batchTransfer";
 
 const myFont = localFont({
   src: [
@@ -35,10 +40,14 @@ const myFont = localFont({
   display: "swap",
 });
 
-interface TransferRecord {
+type TransferStatus = "pending" | "success" | "failed";
+
+interface TransferItem {
   id: string;
   address: string;
   amount: number;
+  isValid?: boolean;
+  status: TransferStatus;
 }
 
 interface UploadProps {
@@ -48,12 +57,15 @@ interface UploadProps {
 export const Upload = ({ onFileUpload }: UploadProps) => {
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [transferRecords, setTransferRecords] = useState<TransferRecord[]>([]);
+  const [transferRecords, setTransferRecords] = useState<TransferItem[]>([]);
   const [error, setError] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const previewDataRef = useRef<IPreviewDataRef>(null);
+  const { handleBatchTransferETH,isPending } = useBatchTransferETH();
+  const { tokenInfo } = useCommonStore();
   const p = useSearchParams();
   const refAddress = p.get("address");
+  const { fee } = useCalculateFee(transferRecords.length);
   // 支持的文件类型
   const acceptedFileTypes = [
     "text/csv" // .csv
@@ -120,10 +132,12 @@ export const Upload = ({ onFileUpload }: UploadProps) => {
       const validData = data.filter(item => item.address && item.amount);
       
       // 将数据转换为转账记录格式，每次上传替换所有数据
-      const newRecords: TransferRecord[] = validData.map((item, index) => ({
+      const newRecords: TransferItem[] = validData.map((item, index) => ({
         id: `${Date.now()}-${index}`,
         address: item.address,
-        amount: item.amount
+        amount: Number(item.amount),
+        isValid: true,
+        status: "pending"
       }));
       
       setTransferRecords(newRecords); // Replace all data
@@ -183,8 +197,79 @@ export const Upload = ({ onFileUpload }: UploadProps) => {
   };
 
   // 预览所有数据
-  const hanldeTransfer = () => {
-    console.log(refAddress,'rewrewr')
+  const hanldeTransfer = async () => {
+    if(!fee){
+      return;
+    }
+    
+    
+    try {
+      let result:any = null;
+      if(tokenInfo?.tokenType === "native"){
+        result = await handleBatchTransferETH(
+          transferRecords.map(item => ({ 
+            to: item.address, 
+            amount: BigInt(item.amount * 10 ** 18 ) 
+          })),
+          BigInt(totalAmount * 10 ** 18 ),
+          fee,
+          refAddress as string
+        );
+      }
+      
+
+      const receipt = result.receipt;
+      
+      const logs = parseEventLogs({
+        abi: BATCH_TRANSFER_ABI,
+        logs: receipt.logs,
+      });
+      
+      const transferDetailLogs = logs.filter((log:any)=>log.eventName === 'TransferDetail').map((log:any)=>({
+        batchIndex: log.args.batchIndex,
+        to: log.args.to,
+        amount: log.args.amount,
+        success: log.args.success,
+        failureReason: log.args.failureReason
+      }));
+      // Update status based on transaction results
+      const updatedTransferList = transferRecords.map((item)=>{
+        const transferDetailLog = transferDetailLogs.find((log:any)=>log.to === item.address);
+        return {
+          ...item,
+          status: (transferDetailLog?.success ? "success" : "failed") as TransferStatus
+        }
+      });
+      
+      setTransferRecords(updatedTransferList.filter(item=>item.status === "failed"));
+      
+      const failedTransfers = updatedTransferList.filter(item => item.status === "failed");
+      const successfulTransfers = updatedTransferList.filter(item => item.status === "success");
+      
+      if(failedTransfers.length > 0){
+        addToast({
+          title: `${failedTransfers.length} transfers failed, ${successfulTransfers.length} transfers succeeded`,
+          color: "warning",
+        });
+      } else {
+        addToast({
+          title: `All ${successfulTransfers.length} transfers succeeded!`,
+          color: "success",
+        });
+      }
+    } catch (error) {
+      // Set all items to failed status on error
+      const failedList = transferRecords.map(item => ({
+        ...item,
+        status: "failed" as TransferStatus
+      }));
+      setTransferRecords(failedList);
+      
+      addToast({
+        title: "Batch transfer failed",
+        color: "danger",
+      });
+    }
   };
 
   // 下载CSV模板
@@ -319,7 +404,7 @@ export const Upload = ({ onFileUpload }: UploadProps) => {
                   <Chip color="primary" variant="flat" className={classNames(myFont.className,'relative top-[1px]')}>
                     Total: {totalAmount.toFixed(6)}
                   </Chip>
-                  <Button color="success" size="sm" radius="full" className="w-full"  onPress={hanldeTransfer}>
+                  <Button color="success" size="sm" radius="full" className="w-full"  onPress={hanldeTransfer} isLoading={isPending}>
                     <span className={classNames(myFont.className)}>Batch Transfer</span>
                   </Button>
                 </div>
@@ -337,6 +422,7 @@ export const Upload = ({ onFileUpload }: UploadProps) => {
                 <TableHeader>
                   <TableColumn className={classNames(myFont.className)}>Address</TableColumn>
                   <TableColumn className={classNames(myFont.className)}>Amount</TableColumn>
+                  <TableColumn className={classNames(myFont.className)}>Status</TableColumn>
                   <TableColumn className={classNames(myFont.className)}>Action</TableColumn>
                 </TableHeader>
                 <TableBody>
@@ -351,6 +437,23 @@ export const Upload = ({ onFileUpload }: UploadProps) => {
                       </TableCell>
                       <TableCell className="font-mono text-sm">
                         {record.amount}
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          size="sm"
+                          color={
+                            record.status === "success" 
+                              ? "success" 
+                              : record.status === "failed" 
+                              ? "danger" 
+                              : "default"
+                          }
+                          variant="flat"
+                          className={classNames(myFont.className)}
+                        >
+                          {record.status === "pending" ? "Pending" : 
+                           record.status === "success" ? "Success" : "Failed"}
+                        </Chip>
                       </TableCell>
                       <TableCell>
                         <Button

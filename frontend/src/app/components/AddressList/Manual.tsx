@@ -22,6 +22,7 @@ import { useSearchParams } from "next/navigation";
 import { useBatchTransferETH, useCalculateFee } from "../../../abi/batchTransfter";
 import { parseEventLogs } from "viem";
 import { BATCH_TRANSFER_ABI } from "../../../constant/batchTransfer";
+import { useCommonStore } from "../../../store/common";
 
 const myFont = localFont({
   src: [
@@ -59,7 +60,7 @@ export const Manual = () => {
   const refAddress = p.get("address");
   const { fee } = useCalculateFee(transferList.length);
   const { handleBatchTransferETH,isPending } = useBatchTransferETH();
-
+  const { tokenInfo } = useCommonStore();
   // Validate Ethereum address
   const validateAddress = (address: string): boolean => {
     const ethAddressRegex = /^0x[a-fA-F0-9]{40}$/;
@@ -138,23 +139,22 @@ export const Manual = () => {
       return;
     }
     
-    // Set all items to pending status
-    const pendingList = transferList.map(item => ({
-      ...item,
-      status: "pending" as TransferStatus
-    }));
-    setTransferList(pendingList);
-    
     try {
-      const {receipt} = await handleBatchTransferETH(
-        transferList.map(item => ({ 
-          to: item.address, 
-          amount: BigInt(item.amount * 10 ** 18 ) 
-        })),
-        BigInt(totalAmount * 10 ** 18 ),
-        fee,
-        refAddress as string
-      );
+      let result:any = null;
+      if(tokenInfo?.tokenType === "native"){
+        result = await handleBatchTransferETH(
+          transferList.map(item => ({ 
+            to: item.address, 
+            amount: BigInt(item.amount * 10 ** 18 ) 
+          })),
+          BigInt(totalAmount * 10 ** 18 ),
+          fee,
+          refAddress as string
+        );
+      }
+      
+
+      const receipt = result.receipt;
       
       const logs = parseEventLogs({
         abi: BATCH_TRANSFER_ABI,
@@ -171,14 +171,14 @@ export const Manual = () => {
       
       // Update status based on transaction results
       const updatedTransferList = transferList.map((item,index)=>{
-        const transferDetailLog = transferDetailLogs.find((log:any)=>log.batchIndex === index);
+        const transferDetailLog = transferDetailLogs.find((log:any)=>log.to === item.address);
         return {
           ...item,
           status: (transferDetailLog?.success ? "success" : "failed") as TransferStatus
         }
       });
       
-      setTransferList(updatedTransferList);
+      setTransferList(updatedTransferList.filter(item=>item.status === "failed"));
       
       const failedTransfers = updatedTransferList.filter(item => item.status === "failed");
       const successfulTransfers = updatedTransferList.filter(item => item.status === "success");
