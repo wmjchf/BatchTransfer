@@ -56,8 +56,7 @@ contract BatchTransferETH is Ownable, ReentrancyGuard {
     event WithdrawalSuccess(address indexed user, uint256 amount);
     event BalanceAdded(address indexed user, uint256 amount, string reason);
 
-    event UnexpectedETHWithdrawn(uint256 amount);
-    event UnexpectedTokenWithdrawn(address indexed token, uint256 amount);
+
 
     constructor(address _feeCollector) Ownable(msg.sender) {
         require(_feeCollector != address(0), "Invalid fee collector address");
@@ -72,7 +71,10 @@ contract BatchTransferETH is Ownable, ReentrancyGuard {
     function calculateFee(uint256 addressCount) public view returns (uint256) {
         require(addressCount > 0, "Address count must be greater than 0");
         
-        uint256 totalFee = baseFee + (addressCount * perAddressFee);
+        uint256 totalFee;
+        unchecked {
+            totalFee = baseFee + (addressCount * perAddressFee);
+        }
         
         if (totalFee < minFee) return minFee;
         if (totalFee > maxFee) return maxFee;
@@ -150,11 +152,11 @@ contract BatchTransferETH is Ownable, ReentrancyGuard {
         // 分配手续费（包括分享分用）
         _distributeFee(msg.sender, referrer, fee);
         
-        // 只退还多余的ETH（失败的转账金额已存储在合约中供用户自行提取）
+        // 将多余的ETH也存储到待提取余额中，避免退款时的DoS攻击
         uint256 refundAmount = msg.value - totalAmount - fee;
         if (refundAmount > 0) {
-            (bool refundSuccess, ) = msg.sender.call{value: refundAmount}("");
-            require(refundSuccess, "Refund failed");
+            pendingWithdrawals[msg.sender] += refundAmount;
+            emit BalanceAdded(msg.sender, refundAmount, "Refund");
         }
         
         emit BatchETHTransfer(msg.sender, successCount, transfers.length - successCount, refundAmount);
@@ -243,11 +245,11 @@ contract BatchTransferETH is Ownable, ReentrancyGuard {
         // 分配手续费（包括分享分用）
         _distributeFee(msg.sender, referrer, fee);
         
-        // 退还多余的ETH
+        // 将多余的ETH存储到待提取余额中，避免退款时的DoS攻击
         uint256 remaining = msg.value - fee;
         if (remaining > 0) {
-            (bool refundSuccess, ) = msg.sender.call{value: remaining}("");
-            require(refundSuccess, "Refund failed");
+            pendingWithdrawals[msg.sender] += remaining;
+            emit BalanceAdded(msg.sender, remaining, "Refund");
         }
         
         emit BatchTokenTransfer(msg.sender, token, successCount, transfers.length - successCount);
@@ -352,50 +354,6 @@ contract BatchTransferETH is Ownable, ReentrancyGuard {
      */
     function getPendingWithdrawal(address user) external view returns (uint256) {
         return pendingWithdrawals[user];
-    }
-
-    /**
-     * @dev 提取意外接收的ETH (正常业务流程不会产生余额)
-     */
-    function withdrawUnexpectedETH() external onlyOwner {
-        uint256 balance = address(this).balance;
-        require(balance > 0, "No unexpected ETH to withdraw");
-        
-        (bool success, ) = owner().call{value: balance}("");
-        require(success, "Withdrawal failed");
-        
-        emit UnexpectedETHWithdrawn(balance);
-    }
-
-    /**
-     * @dev 提取意外接收的代币 (正常业务流程不会产生代币余额)
-     */
-    function withdrawUnexpectedToken(address token) external onlyOwner {
-        require(token != address(0), "Invalid token address");
-        
-        IERC20 tokenContract = IERC20(token);
-        uint256 balance = tokenContract.balanceOf(address(this));
-        require(balance > 0, "No unexpected tokens to withdraw");
-        
-        tokenContract.safeTransfer(owner(), balance);
-        
-        emit UnexpectedTokenWithdrawn(token, balance);
-    }
-
-    /**
-     * @dev 地址转字符串辅助函数
-     */
-    function _addressToString(address addr) private pure returns (string memory) {
-        bytes32 value = bytes32(uint256(uint160(addr)));
-        bytes memory alphabet = "0123456789abcdef";
-        bytes memory str = new bytes(42);
-        str[0] = '0';
-        str[1] = 'x';
-        for (uint256 i = 0; i < 20; i++) {
-            str[2+i*2] = alphabet[uint8(value[i + 12] >> 4)];
-            str[3+i*2] = alphabet[uint8(value[i + 12] & 0x0f)];
-        }
-        return string(str);
     }
 
     /**
