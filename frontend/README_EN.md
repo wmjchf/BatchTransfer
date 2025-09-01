@@ -1,16 +1,16 @@
-# NTYE - Next Ten Years of Ethereum
+# Batch Transfer - Web3 Batch Transfer Tool
 
 <div align="center">
 
-![NTYE Logo](public/image/hero-bg.webp)
+![Batch Transfer Logo](public/image/hero-bg.webp)
 
-**NTYE - Next Ten Years of Ethereum** is a Web3 project based on Ethereum, dedicated to building a decentralized community with 1 million holders. This is an unprecedented and monumental experiment, where millions of users join hands to build a community and witness the true decentralized power of Ethereum smart contracts.
+**Batch Transfer** is a Web3 batch transfer tool based on Ethereum that supports batch transfer functionality for ETH and ERC20 tokens. This tool provides an easy-to-use interface that allows users to perform large-scale token transfers through CSV files or manual input, significantly improving transfer efficiency and saving Gas fees.
 
 [![Next.js](https://img.shields.io/badge/Next.js-14.2.10-black?style=for-the-badge&logo=next.js)](https://nextjs.org/)
 [![React](https://img.shields.io/badge/React-18.3.1-blue?style=for-the-badge&logo=react)](https://reactjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5.2-blue?style=for-the-badge&logo=typescript)](https://www.typescriptlang.org/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.4.17-38B2AC?style=for-the-badge&logo=tailwind-css)](https://tailwindcss.com/)
-[![Wagmi](https://img.shields.io/badge/Wagmi-2.14.3-orange?style=for-the-badge)](https://wagmi.sh/)
+[![Wagmi](https://img.shields.io/badge/Wagmi-2.16.3-orange?style=for-the-badge)](https://wagmi.sh/)
 [![RainbowKit](https://img.shields.io/badge/RainbowKit-2.2.1-purple?style=for-the-badge)](https://www.rainbowkit.com/)
 
 [English](./README_EN.md) | [中文](./README.md)
@@ -19,13 +19,14 @@
 
 ## 🚀 Features
 
-- **🌐 Multi-language Support** - Supports both Chinese and English interfaces
+- **💸 Batch Transfer** - Support for batch transfer of ETH and ERC20 tokens
+- **📊 CSV Import** - Support for bulk import of recipient addresses and amounts via CSV files
+- **✏️ Manual Input** - Support for manually adding and editing transfer addresses
 - **🔗 Web3 Integration** - Complete Ethereum wallet connection and smart contract interaction
-- **🎨 Modern UI** - Responsive design based on Tailwind CSS and HeroUI
-- **⚡ High Performance** - Next.js 14 App Router architecture
-- **🔒 Secure & Reliable** - Complete smart contract interaction and permission management
-- **📱 Mobile Responsive** - Perfect support for mobile and desktop
-- **🎯 User Experience** - Smooth animations and interactive experience
+- **⛽ Gas Optimization** - Significant Gas fee savings through batch operations
+- **🔒 Secure & Reliable** - Smart contract ensures transfer security with automatic refund for failures
+- **📱 Responsive Design** - Perfect support for mobile and desktop
+- **🎯 User Friendly** - Intuitive interface design and operation flow
 
 ## 🛠️ Tech Stack
 
@@ -44,7 +45,7 @@
 - **Tailwind CSS** - Utility-first CSS framework
 - **HeroUI** - Modern React component library
 - **Framer Motion** - Animation library
-- **NextUI Theme** - Theme system
+- **Antd** - Enterprise-class UI components
 
 ### State Management
 - **Zustand** - Lightweight state management
@@ -56,7 +57,7 @@
 ### Development Tools
 - **Sass** - CSS preprocessor
 - **PostCSS** - CSS post-processor
-- **ESLint** - Code quality checking
+- **TypeScript** - Type-safe JavaScript
 
 ## 📦 Installation & Setup
 
@@ -84,8 +85,8 @@ Create a `.env.local` file and configure the following environment variables:
 NEXT_PUBLIC_ENABLE_TESTNETS=true
 NEXT_PUBLIC_BASE_URL=your_api_base_url
 
-# Google Analytics
-NEXT_PUBLIC_GA4_DEBUG=false
+# Smart Contract Address (Configure according to your deployed contract address)
+NEXT_PUBLIC_BATCH_TRANSFER_CONTRACT=0x...
 
 # Other Configuration
 NODE_ENV=development
@@ -120,54 +121,71 @@ pnpm start:prod
 ## 🏗️ Project Structure
 
 ```
-ntyeReact/
+batchTransfer/
 ├── public/                 # Static assets
 │   ├── fonts/             # Font files
-│   └── image/             # Image resources
+│   ├── image/             # Image resources
+│   └── template/          # Template files
+│       └── batch_transfer_template.xlsx  # CSV template
 ├── src/
 │   ├── app/               # Next.js App Router
-│   │   └── [locale]/      # Internationalization routes
-│   │       ├── components/ # Page components
-│   │       │   ├── Banner/     # Banner component
-│   │       │   ├── Experiment/ # Experiment component
-│   │       │   ├── Introduction/ # Introduction component
-│   │       │   ├── Mint/       # Mint component
-│   │       │   ├── Rule/       # Rule component
-│   │       │   └── Token/      # Token component
-│   │       ├── Header/    # Header component
-│   │       └── layout.tsx # Layout file
+│   │   ├── components/    # Page components
+│   │   │   ├── AddressList/    # Address list components
+│   │   │   │   ├── CSV.tsx          # CSV import
+│   │   │   │   ├── Manual.tsx       # Manual input
+│   │   │   │   ├── PreviewData.tsx  # Data preview
+│   │   │   │   └── Upload.tsx       # File upload
+│   │   │   └── TokenSetup/     # Token setup component
+│   │   ├── Header/        # Header component
+│   │   ├── Footer/        # Footer component
+│   │   └── layout.tsx     # Layout file
 │   ├── components/        # Common components
 │   │   ├── ConnectWallet/ # Wallet connection
-│   │   ├── InviteCode/    # Invite code
-│   │   ├── IPRegion/      # IP region
+│   │   ├── IPRegion/      # IP region detection
 │   │   └── WalletConnect/ # Wallet connection
 │   ├── abi/              # Smart contract ABI
+│   │   ├── batchTransfter.ts  # Batch transfer contract
+│   │   ├── erc20.ts          # ERC20 contract
+│   │   └── ntye.ts           # NTYE contract
 │   ├── constant/         # Constant definitions
-│   ├── i18n/             # Internationalization config
 │   ├── rainbowkit/       # Web3 configuration
 │   ├── service/          # API services
 │   ├── store/            # State management
 │   ├── styles/           # Style files
 │   └── utils/            # Utility functions
-├── messages/             # Internationalization messages
 ├── next.config.js        # Next.js configuration
 ├── tailwind.config.js    # Tailwind configuration
 └── tsconfig.json         # TypeScript configuration
 ```
 
-## 🌍 Internationalization Support
+## 💸 User Guide
 
-The project supports both Chinese and English languages:
+### 1. Connect Wallet
+First, click the "Connect Wallet" button to connect your Ethereum wallet (MetaMask, WalletConnect, etc.).
 
-- Default language: English
-- Supported languages: Chinese, English
-- Route format: `/en/` and `/zh/`
+### 2. Select Token
+In the token setup area, select the type of token to transfer:
+- **ETH** - Ethereum native token
+- **ERC20 Token** - Enter the token contract address
 
-### Adding New Languages
+### 3. Add Recipient Addresses
+You can add recipient addresses in two ways:
 
-1. Add new language code in `src/i18n/routing.ts`
-2. Create corresponding language files in `messages/` directory
-3. Update middleware configuration
+#### CSV File Import
+1. Download the CSV template file
+2. Fill in addresses and amounts according to the format
+3. Upload the CSV file
+
+#### Manual Addition
+1. Click "Manual Add"
+2. Enter recipient address and transfer amount
+3. Click "Add" button
+
+### 4. Confirm Transfer
+1. Check the transfer list and total amount
+2. Ensure sufficient wallet balance
+3. Click "Start Transfer"
+4. Confirm the transaction in your wallet
 
 ## 🔗 Web3 Integration
 
@@ -187,43 +205,35 @@ The project supports both Chinese and English languages:
 - Coinbase Wallet
 - Other EVM-compatible wallets
 
-### Smart Contract Interaction
+### Smart Contract Features
 
-The project includes complete ERC20 token interaction functionality:
+The project includes complete batch transfer functionality:
 
-- Token balance query
-- Token approval
-- Token transfer
-- Minting functionality
+- **Batch ETH Transfer** - Transfer ETH to multiple addresses in one transaction
+- **Batch ERC20 Transfer** - Transfer ERC20 tokens to multiple addresses in one transaction
+- **Automatic Authorization Check** - Automatically check and handle ERC20 token authorization
+- **Failure Refund** - Automatically refund unused funds for failed transfers
+- **Gas Optimization** - Significantly save Gas fees through batch operations
 
-## 🎨 Custom Theme
+## ⚠️ Important Notes
 
-The project uses Tailwind CSS and HeroUI, supporting theme customization:
+### Security Reminders
+- **Check Addresses Carefully** - Please ensure recipient addresses are correct before transferring
+- **Confirm Amounts** - Please confirm transfer amounts are correct, transfers cannot be reversed
+- **Sufficient Balance** - Ensure wallet has enough balance to pay transfer amounts and Gas fees
+- **Network Selection** - Confirm the correct blockchain network is selected
 
-```javascript
-// tailwind.config.js
-module.exports = {
-  theme: {
-    extend: {
-      colors: {
-        // Custom colors
-      },
-      animation: {
-        // Custom animations
-      }
-    }
-  }
-}
+### Usage Limitations
+- **Maximum Addresses** - Single batch transfer supports up to 500 addresses
+- **Gas Limits** - Large batch transfers may require higher Gas fees
+- **Token Authorization** - ERC20 token transfers require prior authorization
+
+### CSV Format Requirements
 ```
-
-## 📱 Responsive Design
-
-The project adopts a mobile-first responsive design:
-
-- Mobile optimization
-- Tablet adaptation
-- Desktop experience
-- Touch-friendly interaction
+address,amount
+0x742d35Cc6634C0532925a3b8D4b9B82d4E4B7Bd,1.5
+0x742d35Cc6634C0532925a3b8D4b9B82d4E4B7Bd,2.0
+```
 
 ## 🚀 Deployment
 
@@ -276,9 +286,20 @@ This project is licensed under the [MIT License](LICENSE).
 
 ## 📞 Contact Us
 
-- Project Homepage: [GitHub Repository](https://github.com/your-username/ntyeReact)
-- Issue Feedback: [Issues](https://github.com/your-username/ntyeReact/issues)
-- Discussion: [Discussions](https://github.com/your-username/ntyeReact/discussions)
+- Project Homepage: [GitHub Repository](https://github.com/your-username/batchTransfer)
+- Issue Feedback: [Issues](https://github.com/your-username/batchTransfer/issues)
+- Feature Suggestions: [Discussions](https://github.com/your-username/batchTransfer/discussions)
+
+## 📈 Roadmap
+
+- [x] Basic batch transfer functionality
+- [x] CSV file import
+- [x] Manual address addition
+- [x] Multi-wallet support
+- [ ] More blockchain network support
+- [ ] Transfer history records
+- [ ] Advanced Gas optimization
+- [ ] Mobile APP
 
 ---
 
@@ -286,6 +307,6 @@ This project is licensed under the [MIT License](LICENSE).
 
 **⭐ If this project helps you, please give us a star!**
 
-Made with ❤️ by the NTYE Community
+Made with ❤️ by the Batch Transfer Team
 
 </div> 

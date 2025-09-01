@@ -4,6 +4,7 @@ import { IUserInfo, login } from "../service/public";
 interface ITokenInfo {
   tokenType: "native" | "erc20";
   tokenAddress?: string;
+  decimals: number;
 }
 type Action = {
   setTokenInfo: (tokenInfo: ITokenInfo) => void;

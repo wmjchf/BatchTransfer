@@ -163,8 +163,8 @@ export const Manual = () => {
           });
           return;
         }
-        if(allowance < totalAmount * 10 ** 18){
-          await handleApprove(BigInt(totalAmount * 10 ** 18), process.env.NEXT_PUBLIC_NTYE_CONTRACT as string);
+        if(allowance < totalAmount * 10 ** tokenInfo?.decimals){
+          await handleApprove(BigInt(totalAmount * 10 ** tokenInfo?.decimals), process.env.NEXT_PUBLIC_NTYE_CONTRACT as string);
           await refetch();
           return;
         }
@@ -172,9 +172,9 @@ export const Manual = () => {
           tokenInfo?.tokenAddress as string,
           transferList.map(item => ({ 
             to: item.address, 
-            amount: BigInt(item.amount * 10 ** 18 ) 
+            amount: BigInt(item.amount * 10 ** tokenInfo?.decimals ) 
           })),
-          BigInt(totalAmount * 10 ** 18 ),
+          BigInt(totalAmount * 10 ** tokenInfo?.decimals ),
           fee,
           refAddress as string
         );

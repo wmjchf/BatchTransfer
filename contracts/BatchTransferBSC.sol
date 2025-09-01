@@ -186,7 +186,7 @@ contract BatchTransferBSC is Ownable, ReentrancyGuard {
         
         // 执行批量转账，记录每个结果
         for (uint256 i = 0; i < transfers.length; i++) {
-            try tokenContract.transferFrom(msg.sender, transfers[i].to, transfers[i].amount) {
+            try this._safeTransferFromHelper(tokenContract, msg.sender, transfers[i].to, transfers[i].amount) {
                 results[i] = TransferResult({
                     to: transfers[i].to,
                     amount: transfers[i].amount,
@@ -319,6 +319,18 @@ contract BatchTransferBSC is Ownable, ReentrancyGuard {
             str[3+i*2] = alphabet[uint8(value[i + 12] & 0x0f)];
         }
         return string(str);
+    }
+
+    /**
+     * @dev SafeTransferFrom辅助函数 - 用于try-catch
+     * @param token ERC20代币合约
+     * @param from 发送方地址
+     * @param to 接收方地址
+     * @param amount 转账数量
+     */
+    function _safeTransferFromHelper(IERC20 token, address from, address to, uint256 amount) external {
+        require(msg.sender == address(this), "Only self call allowed");
+        token.safeTransferFrom(from, to, amount);
     }
 
     /**

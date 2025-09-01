@@ -15,10 +15,10 @@ import { IPRegion } from "../components/IPRegion";
 import { Footer } from "./Footer";
 
 export const metadata: Metadata = {
-  title: "NTYE - Next Ten Years of Ethereum",
-  keywords: ["NTYE", "Next Ten Years of Ethereum", "Ethereum", "Web3"],
+  title: "AssetsLink - Web3 asset connectivity at scale",
+  keywords: ["Batch Transfer", "ERC20 Batch Transfer", "Ethereum", "EVM", "Web3"],
   description:
-    " This is an unprecedented and monumental experiment, where millions of users join hands to build a community and witness the true decentralized power of Ethereum smart contracts.",
+    "Web3 asset connectivity at scale. From ERC-20s to NFTs, we simplify access, aggregation, and interaction across the decentralized economy.",
 };
 
 async function RootLayout({ children }: { children: React.ReactNode }) {
