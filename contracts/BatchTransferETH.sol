@@ -40,6 +40,9 @@ contract BatchTransferETH is Ownable, ReentrancyGuard {
     // 分享分用配置
     uint256 public referralRate = 10; // 分用比例 10% (可由owner修改)
     mapping(address => address) public userReferrers; // 用户 => 分享者映射
+    
+    // 统一的待提取余额映射（包括转账失败和推荐奖励）
+    mapping(address => uint256) public pendingWithdrawals; // 用户 => 待提取余额
 
     // 事件
     event BatchETHTransfer(address indexed sender, uint256 successCount, uint256 failureCount, uint256 refundAmount);
@@ -50,6 +53,8 @@ contract BatchTransferETH is Ownable, ReentrancyGuard {
     event ReferralReward(address indexed referrer, address indexed user, uint256 amount);
     event ReferralRateUpdated(uint256 oldRate, uint256 newRate);
     event ReferrerSet(address indexed user, address indexed referrer);
+    event WithdrawalSuccess(address indexed user, uint256 amount);
+    event BalanceAdded(address indexed user, uint256 amount, string reason);
 
     event UnexpectedETHWithdrawn(uint256 amount);
     event UnexpectedTokenWithdrawn(address indexed token, uint256 amount);
@@ -112,37 +117,47 @@ contract BatchTransferETH is Ownable, ReentrancyGuard {
         for (uint256 i = 0; i < transfers.length; i++) {
             (bool success, bytes memory returnData) = transfers[i].to.call{value: transfers[i].amount}("");
             
-            string memory failureReason = success ? "" : _getRevertReason(returnData);
-            results[i] = TransferResult({
-                to: transfers[i].to,
-                amount: transfers[i].amount,
-                success: success,
-                failureReason: failureReason
-            });
-            
-            // 触发详细转账结果事件
-            emit TransferDetail(msg.sender, i, transfers[i].to, transfers[i].amount, success, failureReason);
-            
             if (success) {
+                // 转账成功
                 successfulAmount += transfers[i].amount;
                 successCount++;
+                
+                results[i] = TransferResult({
+                    to: transfers[i].to,
+                    amount: transfers[i].amount,
+                    success: true,
+                    failureReason: ""
+                });
+                
+                emit TransferDetail(msg.sender, i, transfers[i].to, transfers[i].amount, true, "");
+            } else {
+                // 转账失败，存储到待提取余额中
+                pendingWithdrawals[transfers[i].to] += transfers[i].amount;
+                
+                string memory failureReason = _getRevertReason(returnData);
+                results[i] = TransferResult({
+                    to: transfers[i].to,
+                    amount: transfers[i].amount,
+                    success: false,
+                    failureReason: failureReason
+                });
+                
+                emit TransferDetail(msg.sender, i, transfers[i].to, transfers[i].amount, false, failureReason);
+                emit BalanceAdded(transfers[i].to, transfers[i].amount, "Failed transfer");
             }
         }
         
         // 分配手续费（包括分享分用）
         _distributeFee(msg.sender, referrer, fee);
         
-        // 计算需要退还的金额 (失败转账的金额 + 多余的ETH)
-        uint256 failedAmount = totalAmount - successfulAmount;
-        uint256 totalRefund = failedAmount + (msg.value - totalAmount - fee);
-        
-        // 退还失败转账和多余的ETH
-        if (totalRefund > 0) {
-            (bool refundSuccess, ) = msg.sender.call{value: totalRefund}("");
+        // 只退还多余的ETH（失败的转账金额已存储在合约中供用户自行提取）
+        uint256 refundAmount = msg.value - totalAmount - fee;
+        if (refundAmount > 0) {
+            (bool refundSuccess, ) = msg.sender.call{value: refundAmount}("");
             require(refundSuccess, "Refund failed");
         }
         
-        emit BatchETHTransfer(msg.sender, successCount, transfers.length - successCount, totalRefund);
+        emit BatchETHTransfer(msg.sender, successCount, transfers.length - successCount, refundAmount);
     }
 
     /**
@@ -282,6 +297,24 @@ contract BatchTransferETH is Ownable, ReentrancyGuard {
         emit ReferralRateUpdated(oldRate, _referralRate);
     }
 
+    /**
+     * @dev 提取待提取余额
+     * 包括失败转账和推荐奖励的统一提取功能
+     */
+    function withdraw() external nonReentrant {
+        uint256 amount = pendingWithdrawals[msg.sender];
+        require(amount > 0, "No balance to withdraw");
+
+        // 先重置余额，防止重入攻击
+        pendingWithdrawals[msg.sender] = 0;
+        
+        // 转账给用户
+        (bool success, ) = msg.sender.call{value: amount}("");
+        require(success, "Withdraw failed");
+        
+        emit WithdrawalSuccess(msg.sender, amount);
+    }
+
 
 
 
@@ -309,6 +342,16 @@ contract BatchTransferETH is Ownable, ReentrancyGuard {
      */
     function getUserReferrer(address user) external view returns (address) {
         return userReferrers[user];
+    }
+
+    /**
+     * @dev 获取待提取的余额
+     * 包括失败转账和推荐奖励的统一查询
+     * @param user 用户地址
+     * @return 待提取的总余额
+     */
+    function getPendingWithdrawal(address user) external view returns (uint256) {
+        return pendingWithdrawals[user];
     }
 
     /**
@@ -376,11 +419,11 @@ contract BatchTransferETH is Ownable, ReentrancyGuard {
             uint256 referralReward = (totalFee * referralRate) / 100;
             uint256 remainingFee = totalFee - referralReward;
             
-            // 发送分享分用给分享人
+            // 累积分享分用到待提取余额
             if (referralReward > 0) {
-                (bool referralSuccess, ) = actualReferrer.call{value: referralReward}("");
-                require(referralSuccess, "Referral reward transfer failed");
+                pendingWithdrawals[actualReferrer] += referralReward;
                 emit ReferralReward(actualReferrer, user, referralReward);
+                emit BalanceAdded(actualReferrer, referralReward, "Referral reward");
             }
             
             // 发送剩余手续费给收集地址
