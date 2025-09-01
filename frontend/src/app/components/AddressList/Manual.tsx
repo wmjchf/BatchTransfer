@@ -19,10 +19,11 @@ import classNames from "classnames";
 import localFont from "next/font/local";
 import { PreviewData, IPreviewDataRef } from "./PreviewData";
 import { useSearchParams } from "next/navigation";
-import { useBatchTransferETH, useCalculateFee } from "../../../abi/batchTransfter";
+import { useBatchTransferERC20, useBatchTransferETH, useCalculateFee } from "../../../abi/batchTransfter";
 import { parseEventLogs } from "viem";
 import { BATCH_TRANSFER_ABI } from "../../../constant/batchTransfer";
 import { useCommonStore } from "../../../store/common";
+import {useAllowance, useApprove} from "../../../abi/erc20";
 
 const myFont = localFont({
   src: [
@@ -60,7 +61,10 @@ export const Manual = () => {
   const refAddress = p.get("address");
   const { fee } = useCalculateFee(transferList.length);
   const { handleBatchTransferETH,isPending } = useBatchTransferETH();
+  const { handleBatchTransferERC20,isPending: isPendingERC20 } = useBatchTransferERC20();
   const { tokenInfo } = useCommonStore();
+  const { allowance, refetch } = useAllowance(tokenInfo?.tokenAddress as string, process.env.NEXT_PUBLIC_NTYE_CONTRACT as string);
+  const { handleApprove, isPending: isApprovePending } = useApprove(tokenInfo?.tokenAddress as string);
   // Validate Ethereum address
   const validateAddress = (address: string): boolean => {
     const ethAddressRegex = /^0x[a-fA-F0-9]{40}$/;
@@ -151,6 +155,30 @@ export const Manual = () => {
           fee,
           refAddress as string
         );
+      }else{
+        if(!tokenInfo?.tokenAddress){
+          addToast({
+            title: "Please setup token first",
+            color: "danger",
+          });
+          return;
+        }
+        if(allowance < totalAmount * 10 ** 18){
+          await handleApprove(BigInt(totalAmount * 10 ** 18), process.env.NEXT_PUBLIC_NTYE_CONTRACT as string);
+          await refetch();
+          return;
+        }
+        result = await handleBatchTransferERC20(
+          tokenInfo?.tokenAddress as string,
+          transferList.map(item => ({ 
+            to: item.address, 
+            amount: BigInt(item.amount * 10 ** 18 ) 
+          })),
+          BigInt(totalAmount * 10 ** 18 ),
+          fee,
+          refAddress as string
+        );
+        await refetch();
       }
       
 
@@ -208,6 +236,8 @@ export const Manual = () => {
       });
     }
   };
+
+
 
   // Calculate total amount
   const totalAmount = transferList.reduce((sum, item) => {
@@ -276,7 +306,7 @@ export const Manual = () => {
                 <Chip color="primary" variant="flat" className={classNames(myFont.className)}>
                   Total: {totalAmount.toFixed(6)}
                 </Chip>
-                <Button color="success" isLoading={isPending} size="sm" radius="full" className="w-full"  onPress={hanldeTransfer}>
+                <Button color="success" isLoading={isPending||isApprovePending||isPendingERC20} size="sm" radius="full" className="w-full"  onPress={hanldeTransfer}>
                     <span className={classNames(myFont.className)}>Batch Transfer</span>
                   </Button>
                 </div>

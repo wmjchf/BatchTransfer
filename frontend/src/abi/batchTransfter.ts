@@ -73,4 +73,56 @@ import {
       isError,
     };
   };
+
+  export const useBatchTransferERC20 = () => {
+    const [isPending, setIsPending] = useState(false);
+    const { writeContractAsync, isError } = useWriteContract();
+    const config = useConfig();
+  
+    const handleBatchTransferERC20 = async (
+      tokenAddress: string,
+      transfer: Transfer[],
+      totalAmount: bigint,
+      fee: bigint,
+      refAddress?: string
+    ) => {
+     
+      try {
+        if (!transfer) {
+          throw new Error("Missing required parameters");
+        }
+        // 如果没有提供refAddress，使用零地址
+        const finalRefAddress =
+          refAddress || "0x0000000000000000000000000000000000000000";
+        setIsPending(true);
+        
+        const hash = await writeContractAsync({
+          abi: BATCH_TRANSFER_ABI,
+          address: process.env.NEXT_PUBLIC_NTYE_CONTRACT as Address,
+          functionName: "batchTransferToken",
+          args: [tokenAddress,transfer, finalRefAddress as Address],
+          value: fee,
+          gas: BigInt(5000000),
+        });
+        const receipt = await waitForTransactionReceipt(config as any, {
+          hash,
+        });
+        return { hash, receipt };
+      } catch (error) {
+        addToast({
+          title: (error as { details: string }).details,
+          color: "danger",
+        });
+        throw error;
+      } finally {
+        setIsPending(false);
+      }
+    };
+  
+    return {
+      handleBatchTransferERC20,
+      isPending,
+      isError,
+    };
+  };
   

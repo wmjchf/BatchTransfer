@@ -20,9 +20,10 @@ import localFont from "next/font/local";
 import classNames from "classnames";
 import { useSearchParams } from "next/navigation";
 import { useCommonStore } from "../../../store/common";
-import { useBatchTransferETH, useCalculateFee } from "../../../abi/batchTransfter";
+import { useBatchTransferERC20, useBatchTransferETH, useCalculateFee } from "../../../abi/batchTransfter";
 import { parseEventLogs } from "viem";
 import { BATCH_TRANSFER_ABI } from "../../../constant/batchTransfer";
+import { useAllowance, useApprove } from "../../../abi/erc20";
 
 const myFont = localFont({
   src: [
@@ -63,6 +64,9 @@ export const Upload = ({ onFileUpload }: UploadProps) => {
   const previewDataRef = useRef<IPreviewDataRef>(null);
   const { handleBatchTransferETH,isPending } = useBatchTransferETH();
   const { tokenInfo } = useCommonStore();
+  const { handleBatchTransferERC20,isPending: isPendingERC20 } = useBatchTransferERC20();
+  const { allowance, refetch } = useAllowance(tokenInfo?.tokenAddress as string, process.env.NEXT_PUBLIC_NTYE_CONTRACT as string);
+  const { handleApprove, isPending: isApprovePending } = useApprove(tokenInfo?.tokenAddress as string);
   const p = useSearchParams();
   const refAddress = p.get("address");
   const { fee } = useCalculateFee(transferRecords.length);
@@ -215,6 +219,30 @@ export const Upload = ({ onFileUpload }: UploadProps) => {
           fee,
           refAddress as string
         );
+      }else{
+        if(!tokenInfo?.tokenAddress){
+          addToast({
+            title: "Please setup token first",
+            color: "danger",
+          });
+          return;
+        }
+        if(allowance < totalAmount * 10 ** 18){
+          await handleApprove(BigInt(totalAmount * 10 ** 18), process.env.NEXT_PUBLIC_NTYE_CONTRACT as string);
+          await refetch();
+          return;
+        }
+        result = await handleBatchTransferERC20(
+          tokenInfo?.tokenAddress as string,
+          transferRecords.map(item => ({ 
+            to: item.address, 
+            amount: BigInt(item.amount * 10 ** 18 ) 
+          })),
+          BigInt(totalAmount * 10 ** 18 ),
+          fee,
+          refAddress as string
+        );
+        await refetch();
       }
       
 
@@ -404,7 +432,7 @@ export const Upload = ({ onFileUpload }: UploadProps) => {
                   <Chip color="primary" variant="flat" className={classNames(myFont.className,'relative top-[1px]')}>
                     Total: {totalAmount.toFixed(6)}
                   </Chip>
-                  <Button color="success" size="sm" radius="full" className="w-full"  onPress={hanldeTransfer} isLoading={isPending}>
+                  <Button color="success" size="sm" radius="full" className="w-full"  onPress={hanldeTransfer} isLoading={isPending||isApprovePending||isPendingERC20}>
                     <span className={classNames(myFont.className)}>Batch Transfer</span>
                   </Button>
                 </div>

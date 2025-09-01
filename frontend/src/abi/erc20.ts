@@ -19,7 +19,6 @@ export const useApprove = (tokenAddr: string) => {
       if (!amount) {
         return;
       }
-
       const hash = await writeContractAsync({
         abi: ERC20ABI,
         address: tokenAddr as Address,
@@ -45,7 +44,7 @@ export const useApprove = (tokenAddr: string) => {
 
 export const useAllowance = (tokenAddr: string, tradeContract: string) => {
   const handleData = (data: unknown) => {
-    return data ? Number(data) / 10 ** 18 : 0;
+    return data ? Number(data) : 0;
   };
   const { address } = useAccount();
   const { data, error, isPending, refetch } = useReadContract({
