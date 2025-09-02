@@ -19,6 +19,12 @@ contract BatchTransferETH is Ownable, ReentrancyGuard {
     uint256 public perAddressFee = 0.000006 ether; // 每个地址费用 ~$0.01
     uint256 public minFee = 0.0005 ether;         // 最低手续费 ~$0.8
     uint256 public maxFee = 0.009 ether;          // 最高手续费 ~$15
+    
+    // Gas限制配置（优化后）
+    uint256 public constant ETH_TRANSFER_GAS = 22000;   // 每次ETH转账的估算gas（优化后）
+    uint256 public constant TOKEN_TRANSFER_GAS = 60000; // 每次代币转账的估算gas（优化后）
+    uint256 public constant BASE_GAS = 45000;           // 基础gas消耗（进一步优化）
+    uint256 public gasLimitRatio = 3;                   // block.gaslimit的倒数（默认1/3）
 
     // 转账信息结构体
     struct Transfer {
@@ -95,16 +101,18 @@ contract BatchTransferETH is Ownable, ReentrancyGuard {
         returns (TransferResult[] memory results)
     {
         require(transfers.length > 0, "No transfers specified");
-        require(transfers.length <= 300, "Too many transfers for ETH");
+        _checkGasLimit(transfers.length, true);
         
         uint256 fee = calculateFee(transfers.length);
         uint256 totalAmount = 0;
         
         // 预先验证和计算总金额
-        for (uint256 i = 0; i < transfers.length; i++) {
-            require(transfers[i].to != address(0), "Invalid recipient address");
-            require(transfers[i].amount > 0, "Transfer amount must be greater than 0");
-            totalAmount += transfers[i].amount;
+        unchecked {
+            for (uint256 i = 0; i < transfers.length; ++i) {
+                require(transfers[i].to != address(0), "Invalid recipient address");
+                require(transfers[i].amount > 0, "Transfer amount must be greater than 0");
+                totalAmount += transfers[i].amount;
+            }
         }
         
         // 检查支付金额是否足够
@@ -116,36 +124,29 @@ contract BatchTransferETH is Ownable, ReentrancyGuard {
         uint256 successCount = 0;
         
         // 执行批量转账，记录每个结果
-        for (uint256 i = 0; i < transfers.length; i++) {
-            (bool success, bytes memory returnData) = transfers[i].to.call{value: transfers[i].amount}("");
-            
-            if (success) {
-                // 转账成功
-                successfulAmount += transfers[i].amount;
-                successCount++;
+        unchecked {
+            for (uint256 i = 0; i < transfers.length; ++i) {
+                address to = transfers[i].to;
+                uint256 amount = transfers[i].amount;
+                (bool success, bytes memory returnData) = to.call{value: amount}("");
                 
-                results[i] = TransferResult({
-                    to: transfers[i].to,
-                    amount: transfers[i].amount,
-                    success: true,
-                    failureReason: ""
-                });
-                
-                emit TransferDetail(msg.sender, i, transfers[i].to, transfers[i].amount, true, "");
-            } else {
-                // 转账失败，存储到待提取余额中
-                pendingWithdrawals[transfers[i].to] += transfers[i].amount;
-                
-                string memory failureReason = _getRevertReason(returnData);
-                results[i] = TransferResult({
-                    to: transfers[i].to,
-                    amount: transfers[i].amount,
-                    success: false,
-                    failureReason: failureReason
-                });
-                
-                emit TransferDetail(msg.sender, i, transfers[i].to, transfers[i].amount, false, failureReason);
-                emit BalanceAdded(transfers[i].to, transfers[i].amount, "Failed transfer");
+                if (success) {
+                    // 转账成功
+                    successfulAmount += amount;
+                    ++successCount;
+                    
+                    results[i] = TransferResult(to, amount, true, "");
+                    emit TransferDetail(msg.sender, i, to, amount, true, "");
+                } else {
+                    // 转账失败，存储到待提取余额中
+                    pendingWithdrawals[to] += amount;
+                    
+                    string memory failureReason = _getRevertReason(returnData);
+                    results[i] = TransferResult(to, amount, false, failureReason);
+                    
+                    emit TransferDetail(msg.sender, i, to, amount, false, failureReason);
+                    emit BalanceAdded(to, amount, "Failed transfer");
+                }
             }
         }
         
@@ -177,7 +178,7 @@ contract BatchTransferETH is Ownable, ReentrancyGuard {
     {
         require(token != address(0), "Invalid token address");
         require(transfers.length > 0, "No transfers specified");
-        require(transfers.length <= 200, "Too many transfers for tokens");
+        _checkGasLimit(transfers.length, false);
         
 
         
@@ -188,10 +189,12 @@ contract BatchTransferETH is Ownable, ReentrancyGuard {
         uint256 totalAmount = 0;
         
         // 预先验证和计算总金额
-        for (uint256 i = 0; i < transfers.length; i++) {
-            require(transfers[i].to != address(0), "Invalid recipient address");
-            require(transfers[i].amount > 0, "Transfer amount must be greater than 0");
-            totalAmount += transfers[i].amount;
+        unchecked {
+            for (uint256 i = 0; i < transfers.length; ++i) {
+                require(transfers[i].to != address(0), "Invalid recipient address");
+                require(transfers[i].amount > 0, "Transfer amount must be greater than 0");
+                totalAmount += transfers[i].amount;
+            }
         }
         
         // 检查用户授权和余额
@@ -204,41 +207,24 @@ contract BatchTransferETH is Ownable, ReentrancyGuard {
         uint256 successCount = 0;
         
         // 执行批量转账，记录每个结果
-        for (uint256 i = 0; i < transfers.length; i++) {
-            try this._safeTransferFromHelper(tokenContract, msg.sender, transfers[i].to, transfers[i].amount) {
-                results[i] = TransferResult({
-                    to: transfers[i].to,
-                    amount: transfers[i].amount,
-                    success: true,
-                    failureReason: ""
-                });
+        unchecked {
+            for (uint256 i = 0; i < transfers.length; ++i) {
+                address to = transfers[i].to;
+                uint256 amount = transfers[i].amount;
                 
-                // 触发详细转账结果事件
-                emit TransferDetail(msg.sender, i, transfers[i].to, transfers[i].amount, true, "");
-                
-                successfulAmount += transfers[i].amount;
-                successCount++;
-            } catch Error(string memory reason) {
-                results[i] = TransferResult({
-                    to: transfers[i].to,
-                    amount: transfers[i].amount,
-                    success: false,
-                    failureReason: reason
-                });
-                
-                // 触发详细转账结果事件
-                emit TransferDetail(msg.sender, i, transfers[i].to, transfers[i].amount, false, reason);
-            } catch (bytes memory) {
-                string memory failureReason = "Token transfer failed";
-                results[i] = TransferResult({
-                    to: transfers[i].to,
-                    amount: transfers[i].amount,
-                    success: false,
-                    failureReason: failureReason
-                });
-                
-                // 触发详细转账结果事件
-                emit TransferDetail(msg.sender, i, transfers[i].to, transfers[i].amount, false, failureReason);
+                try this._safeTransferFromHelper(tokenContract, msg.sender, to, amount) {
+                    results[i] = TransferResult(to, amount, true, "");
+                    emit TransferDetail(msg.sender, i, to, amount, true, "");
+                    
+                    successfulAmount += amount;
+                    ++successCount;
+                } catch Error(string memory reason) {
+                    results[i] = TransferResult(to, amount, false, reason);
+                    emit TransferDetail(msg.sender, i, to, amount, false, reason);
+                } catch (bytes memory) {
+                    results[i] = TransferResult(to, amount, false, "Token transfer failed");
+                    emit TransferDetail(msg.sender, i, to, amount, false, "Token transfer failed");
+                }
             }
         }
         
@@ -300,6 +286,15 @@ contract BatchTransferETH is Ownable, ReentrancyGuard {
     }
 
     /**
+     * @dev 设置gas限制比例 (仅所有者)
+     * @param _gasLimitRatio 新的gas限制比例倒数 (2-10，表示1/2到1/10)
+     */
+    function setGasLimitRatio(uint256 _gasLimitRatio) external onlyOwner {
+        require(_gasLimitRatio >= 2 && _gasLimitRatio <= 10, "Gas limit ratio must be between 2 and 10");
+        gasLimitRatio = _gasLimitRatio;
+    }
+
+    /**
      * @dev 提取待提取余额
      * 包括失败转账和推荐奖励的统一提取功能
      */
@@ -354,6 +349,32 @@ contract BatchTransferETH is Ownable, ReentrancyGuard {
      */
     function getPendingWithdrawal(address user) external view returns (uint256) {
         return pendingWithdrawals[user];
+    }
+
+    /**
+     * @dev 检查gas限制
+     * @param transferCount 转账数量
+     * @param isETH 是否为ETH转账
+     */
+    function _checkGasLimit(uint256 transferCount, bool isETH) private view {
+        uint256 estimatedGas = BASE_GAS + (transferCount * (isETH ? ETH_TRANSFER_GAS : TOKEN_TRANSFER_GAS));
+        uint256 maxAllowedGas = block.gaslimit / gasLimitRatio;
+        require(estimatedGas <= maxAllowedGas, "Too many transfers for current gas limit");
+    }
+
+    /**
+     * @dev 计算最大可执行的转账数量
+     * @param isETH 是否为ETH转账
+     * @return 最大转账数量
+     */
+    function getMaxTransferCount(bool isETH) external view returns (uint256) {
+        uint256 maxAllowedGas = block.gaslimit / gasLimitRatio;
+        if (maxAllowedGas <= BASE_GAS) return 0;
+        
+        uint256 availableGas = maxAllowedGas - BASE_GAS;
+        uint256 gasPerTransfer = isETH ? ETH_TRANSFER_GAS : TOKEN_TRANSFER_GAS;
+        
+        return availableGas / gasPerTransfer;
     }
 
     /**
